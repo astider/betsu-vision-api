@@ -64,4 +64,4 @@ node_modules/
 
 # dotenv environment variables file
 .env
-betsu-74576-0468effc5d10.json
+service-account-key-file.json
