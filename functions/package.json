@@ -29,6 +29,5 @@
     "firebase-functions-test": "^0.2.0",
     "typescript": "^3.8.0"
   },
-  "type": "module",
   "private": true
 }
