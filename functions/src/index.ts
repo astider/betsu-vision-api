@@ -1,38 +1,61 @@
-import * as express from 'express';
-import { Request, Response } from 'express';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import * as Busboy from 'busboy';
 import * as functions from 'firebase-functions';
-import * as multer from 'multer';
 import vision from '@google-cloud/vision';
 
-const credentials = require('./service-account-key-file.json')
-const app = express();
-
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage, limits: { fileSize: 5000000 } });
+const credentials = require(path.join(__dirname, './service-account-key-file.json'));
 
 const client = new vision.ImageAnnotatorClient({ credentials });
 
-async function getTextFromFiles(file: Buffer) {
+async function getTextFromFiles(file: Buffer | string) {
   const [result] = await client.textDetection(file);
   const detections = result.textAnnotations;
-  // const textList = [] as string[];
+  const textList = [] as string[];
+  console.log('Detection:', detections);
   console.log('Text:');
-  if (!detections) return;
+  if (!detections) return [];
   detections.forEach(text => {
-    console.log(text);
-    // textList.push(text);
+    console.log(text.description);
+    textList.push(text.description ?? '');
   });
+  return textList;
 }
 
-app.get('hello', (req: Request, res: Response) => {
-  return res.send('hello');
-})
+exports.upload = functions.https.onRequest( async (req, res) => {
+  if (req.method === 'POST') {
+    const busboy = new Busboy({ headers: req.headers });
+    const uploads = {} as Record<string, any>;
+    let pathToFile = '';
 
-app.post('upload', upload.single('receipt'), async (req: Request, res: Response) => {
-  const file = req.file;
-  if (!file) return res.json({ success: false });
-  await getTextFromFiles(file.buffer);
-  return res.json({ success: true });
-})
+    // This callback will be invoked for each file uploaded
+    busboy.on('file', async (fieldname, file, filename, encoding, mimetype) => {
+      console.log(`File [${fieldname}] filename: ${filename}, encoding: ${encoding}, mimetype: ${mimetype}`);
+      
+      const filepath = path.join(os.tmpdir(), fieldname);
+      uploads[fieldname] = { file: filepath }
+      console.log(`Saving '${fieldname}' to ${filepath}`);
+      pathToFile = filepath;
+      file.pipe(fs.createWriteStream(filepath));
+    });
 
-exports.magic = functions.https.onRequest(app);
+    // This callback will be invoked after all uploaded files are saved.
+    busboy.on('finish', async () => {
+      console.log('On finish');
+      console.log(uploads);
+      const texts = await getTextFromFiles(pathToFile);
+      for (const name in uploads) {
+        const upload = uploads[name];
+        const file = upload.file;
+        fs.unlinkSync(file);
+        console.log(`remove [${file}] from disk`);
+      }
+      res.send(texts);
+    });
+
+    busboy.end(req.rawBody);
+  } else {
+    res.status(404).end();
+  }
+});
