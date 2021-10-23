@@ -60,7 +60,9 @@ app.post('/upload', async (req, res) => {
         fs.unlinkSync(file);
         console.log(`remove [${file}] from disk`);
       }
-      res.send(texts);
+      res.json({
+        list: texts,
+      });
     });
 
     busboy.end((req as any).rawBody);
