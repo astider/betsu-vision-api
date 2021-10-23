@@ -1,11 +1,14 @@
 import * as fs from 'fs';
 import * as os from 'os';
+import * as express from 'express';
+import * as cors from 'cors';
 import * as path from 'path';
 import * as Busboy from 'busboy';
 import * as functions from 'firebase-functions';
 import vision from '@google-cloud/vision';
 
 const credentials = require(path.join(__dirname, './service-account-key-file.json'));
+const app = express();
 
 const client = new vision.ImageAnnotatorClient({ credentials });
 
@@ -23,7 +26,13 @@ async function getTextFromFiles(file: Buffer | string) {
   return textList;
 }
 
-exports.upload = functions.https.onRequest( async (req, res) => {
+const corsOptions = {
+  origin: 'https://shared.astider.reviews',
+};
+
+app.use(cors(corsOptions));
+
+app.post('/upload', async (req, res) => {
   if (req.method === 'POST') {
     const busboy = new Busboy({ headers: req.headers });
     const uploads = {} as Record<string, any>;
@@ -54,8 +63,10 @@ exports.upload = functions.https.onRequest( async (req, res) => {
       res.send(texts);
     });
 
-    busboy.end(req.rawBody);
+    busboy.end((req as any).rawBody);
   } else {
     res.status(404).end();
   }
 });
+
+exports.vision = functions.https.onRequest(app);
